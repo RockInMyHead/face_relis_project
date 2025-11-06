@@ -21,12 +21,32 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual Environment
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
 venv/
 env/
 ENV/
-env.bak/
-venv.bak/
+.venv/
+.env/
 
 # IDE
 .vscode/
@@ -37,11 +57,6 @@ venv.bak/
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # Logs
@@ -51,43 +66,17 @@ logs/
 # Temporary files
 *.tmp
 *.temp
-temp/
-tmp/
-
-# Test files
-test_*.html
-test_*.py
-*_test.py
-test_*/
-
-# Documentation
-*.md
-!README.md
 
 # Model files (large)
 *.onnx
-*.pkl
-*.model
+*.pb
+*.h5
+models/
 
-# Cache
-.cache/
-*.cache
+# Test outputs
+test_output/
+output/
 
-# Node modules (if any)
-node_modules/
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Backup files
-*.bak
-*.backup
+# Personal data
+personal_photos/
+private/
