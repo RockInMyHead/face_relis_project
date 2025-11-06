@@ -21,7 +21,7 @@ import re
 from io import BytesIO
 
 # Используем продвинутую кластеризацию с ArcFace
-from cluster_simple import build_plan_pro as build_plan_advanced, distribute_to_folders, process_group_folder, IMG_EXTS
+from cluster_advanced import build_plan_advanced, distribute_to_folders, process_group_folder, IMG_EXTS
 print("✅ Используется PRODUCTION кластеризация (ArcFace + Faiss)")
 
 # Включаем продвинутую кластеризацию
