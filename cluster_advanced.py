@@ -86,11 +86,12 @@ def calculate_blur_score(image: np.ndarray) -> float:
         gray = image
 
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    # Убеждаемся, что возвращаем число
-    if not isinstance(laplacian_var, (int, float)):
-        print(f"⚠️ laplacian_var не является числом: {type(laplacian_var)}, {laplacian_var}")
+    # Преобразуем NumPy типы в Python float
+    try:
+        return float(laplacian_var)
+    except (TypeError, ValueError):
+        print(f"⚠️ Не удалось преобразовать laplacian_var: {type(laplacian_var)}, {laplacian_var}")
         return 250.0  # значение по умолчанию
-    return float(laplacian_var)
 
 def calculate_face_quality(face_img: np.ndarray, bbox: tuple = None) -> float:
     """
@@ -111,9 +112,11 @@ def calculate_face_quality(face_img: np.ndarray, bbox: tuple = None) -> float:
     
     # 2. Оценка резкости через Variance of Laplacian
     blur_score = calculate_blur_score(face_img)
-    # Проверяем, что blur_score является числом
-    if not isinstance(blur_score, (int, float)):
-        print(f"⚠️ blur_score не является числом: {type(blur_score)}, {blur_score}")
+    # Преобразуем NumPy типы в Python float
+    try:
+        blur_score = float(blur_score)
+    except (TypeError, ValueError):
+        print(f"⚠️ Не удалось преобразовать blur_score: {type(blur_score)}, {blur_score}")
         blur_score = 250.0  # значение по умолчанию
     # Нормализуем: blur < 100 = плохо, > 500 = отлично
     normalized_blur = min(max(blur_score, 100), 500) / 500
@@ -218,9 +221,11 @@ class AdvancedFaceRecognition:
             # Фильтрация по confidence
             if hasattr(face, 'det_score'):
                 det_score = face.det_score
-                # Проверяем, что det_score является числом
-                if not isinstance(det_score, (int, float)):
-                    print(f"⚠️ det_score не является числом: {type(det_score)}, {det_score}")
+                # Преобразуем NumPy типы в Python float
+                try:
+                    det_score = float(det_score)
+                except (TypeError, ValueError):
+                    print(f"⚠️ Не удалось преобразовать det_score: {type(det_score)}, {det_score}")
                     det_score = 0.95  # значение по умолчанию
                 if det_score < self.confidence_threshold:
                     continue
@@ -285,9 +290,10 @@ class AdvancedFaceRecognition:
             # Убеждаемся, что confidence является числом
             confidence = 1.0
             if hasattr(face, 'det_score'):
-                conf = face.det_score
-                if isinstance(conf, (int, float)):
-                    confidence = float(conf)
+                try:
+                    confidence = float(face.det_score)
+                except (TypeError, ValueError):
+                    confidence = 1.0
             
             results.append({
                 'bbox': bbox,
@@ -713,10 +719,11 @@ def build_plan_advanced(
             # Фильтрация по качеству
             valid_faces = []
             for face in faces:
-                # Проверяем, что quality является числом
+                # Получаем quality и преобразуем в float
                 quality = face.get('quality', 0.5)
-                if not isinstance(quality, (int, float)):
-                    print(f"⚠️ quality не является числом: {type(quality)}, {quality}")
+                try:
+                    quality = float(quality)
+                except (TypeError, ValueError):
                     quality = 0.5  # значение по умолчанию
 
                 # Проверка резкости
@@ -735,9 +742,11 @@ def build_plan_advanced(
             
             for face in valid_faces:
                 all_embeddings.append(face['embedding'])
-                # Убеждаемся, что quality является числом
+                # Получаем quality и преобразуем в float
                 face_quality = face.get('quality', 0.5)
-                if not isinstance(face_quality, (int, float)):
+                try:
+                    face_quality = float(face_quality)
+                except (TypeError, ValueError):
                     face_quality = 0.5
                 all_qualities.append(face_quality)
                 owners.append(img_path)
