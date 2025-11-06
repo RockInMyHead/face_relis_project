@@ -216,8 +216,14 @@ class AdvancedFaceRecognition:
         
         for face in faces:
             # Фильтрация по confidence
-            if hasattr(face, 'det_score') and face.det_score < self.confidence_threshold:
-                continue
+            if hasattr(face, 'det_score'):
+                det_score = face.det_score
+                # Проверяем, что det_score является числом
+                if not isinstance(det_score, (int, float)):
+                    print(f"⚠️ det_score не является числом: {type(det_score)}, {det_score}")
+                    det_score = 0.95  # значение по умолчанию
+                if det_score < self.confidence_threshold:
+                    continue
             
             bbox = face.bbox.astype(int)
             x1, y1, x2, y2 = bbox
@@ -276,12 +282,19 @@ class AdvancedFaceRecognition:
                         embedding = (embedding + flipped_embedding) / 2.0
                         embedding = embedding / np.linalg.norm(embedding)
             
+            # Убеждаемся, что confidence является числом
+            confidence = 1.0
+            if hasattr(face, 'det_score'):
+                conf = face.det_score
+                if isinstance(conf, (int, float)):
+                    confidence = float(conf)
+            
             results.append({
                 'bbox': bbox,
                 'landmarks': face.kps if hasattr(face, 'kps') else None,
                 'embedding': embedding,
                 'quality': quality,
-                'confidence': face.det_score if hasattr(face, 'det_score') else 1.0
+                'confidence': confidence
             })
         
         return results
