@@ -84,9 +84,13 @@ def calculate_blur_score(image: np.ndarray) -> float:
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     else:
         gray = image
-    
+
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return laplacian_var
+    # Убеждаемся, что возвращаем число
+    if not isinstance(laplacian_var, (int, float)):
+        print(f"⚠️ laplacian_var не является числом: {type(laplacian_var)}, {laplacian_var}")
+        return 250.0  # значение по умолчанию
+    return float(laplacian_var)
 
 def calculate_face_quality(face_img: np.ndarray, bbox: tuple = None) -> float:
     """
@@ -107,6 +111,10 @@ def calculate_face_quality(face_img: np.ndarray, bbox: tuple = None) -> float:
     
     # 2. Оценка резкости через Variance of Laplacian
     blur_score = calculate_blur_score(face_img)
+    # Проверяем, что blur_score является числом
+    if not isinstance(blur_score, (int, float)):
+        print(f"⚠️ blur_score не является числом: {type(blur_score)}, {blur_score}")
+        blur_score = 250.0  # значение по умолчанию
     # Нормализуем: blur < 100 = плохо, > 500 = отлично
     normalized_blur = min(max(blur_score, 100), 500) / 500
     scores.append(normalized_blur * 0.5)  # 50% веса
@@ -692,9 +700,15 @@ def build_plan_advanced(
             # Фильтрация по качеству
             valid_faces = []
             for face in faces:
+                # Проверяем, что quality является числом
+                quality = face.get('quality', 0.5)
+                if not isinstance(quality, (int, float)):
+                    print(f"⚠️ quality не является числом: {type(quality)}, {quality}")
+                    quality = 0.5  # значение по умолчанию
+
                 # Проверка резкости
-                if face['quality'] < 0.3:  # Низкое качество
-                    print(f"  ⚠️ Низкое качество лица в {img_path.name}: {face['quality']:.3f}")
+                if quality < 0.3:  # Низкое качество
+                    print(f"  ⚠️ Низкое качество лица в {img_path.name}: {quality:.3f}")
                     continue
                 
                 valid_faces.append(face)
@@ -708,7 +722,11 @@ def build_plan_advanced(
             
             for face in valid_faces:
                 all_embeddings.append(face['embedding'])
-                all_qualities.append(face['quality'])
+                # Убеждаемся, что quality является числом
+                face_quality = face.get('quality', 0.5)
+                if not isinstance(face_quality, (int, float)):
+                    face_quality = 0.5
+                all_qualities.append(face_quality)
                 owners.append(img_path)
                 
         except Exception as e:
