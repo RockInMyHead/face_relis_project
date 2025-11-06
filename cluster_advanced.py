@@ -175,7 +175,11 @@ class AdvancedFaceRecognition:
     
     def __init__(self, use_gpu=False, min_face_size=20, confidence_threshold=0.9):
         self.min_face_size = min_face_size
-        self.confidence_threshold = confidence_threshold
+        # Убеждаемся, что confidence_threshold является float
+        try:
+            self.confidence_threshold = float(confidence_threshold)
+        except (TypeError, ValueError):
+            self.confidence_threshold = 0.9
         self.use_gpu = use_gpu
         
         # Инициализация детектора
@@ -648,6 +652,16 @@ def build_plan_advanced(
         dict с clusters, plan, unreadable, no_faces
     """
     print(f"🚀 [ADVANCED] Запуск продвинутой кластеризации: {input_dir}")
+    
+    # Убеждаемся, что все численные параметры имеют правильный тип
+    try:
+        min_face_confidence = float(min_face_confidence)
+    except (TypeError, ValueError):
+        min_face_confidence = 0.9
+    try:
+        min_blur_threshold = float(min_blur_threshold)
+    except (TypeError, ValueError):
+        min_blur_threshold = 100.0
     
     input_dir = Path(input_dir)
     start_time = time.time()
