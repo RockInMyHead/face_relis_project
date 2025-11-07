@@ -20,9 +20,61 @@ import tempfile
 import re
 from io import BytesIO
 
-# Используем продвинутую кластеризацию с ArcFace
-from cluster_advanced import build_plan_advanced, distribute_to_folders, process_group_folder, IMG_EXTS
-print("✅ Используется PRODUCTION кластеризация (ArcFace + Faiss)")
+# Автоматический выбор лучшего метода распознавания
+def test_method(method_name):
+    """Тест метода распознавания"""
+    try:
+        if method_name == "insightface":
+            from insightface.app import FaceAnalysis
+            # Пробуем модели в порядке приоритета: легкие -> тяжелые
+            models_to_try = ["buffalo_s", "antelopev2", "buffalo_m", "buffalo_l"]
+
+            for model_name in models_to_try:
+                try:
+                    app = FaceAnalysis(name=model_name)
+                    app.prepare(ctx_id=0, det_size=(640, 640))
+                    return model_name
+                except Exception:
+                    continue
+
+            return False
+        elif method_name == "face_recognition":
+            import face_recognition
+            return True
+        return False
+    except Exception as e:
+        return False
+
+# Приоритет: insightface (лучшее качество) > face_recognition (запасной)
+USE_FACE_RECOGNITION = False
+INSIGHTFACE_MODEL = None
+
+# Тестируем insightface
+insightface_result = test_method("insightface")
+if insightface_result:
+    try:
+        from cluster_simple import build_plan_pro as build_plan_advanced, distribute_to_folders, process_group_folder, IMG_EXTS
+        INSIGHTFACE_MODEL = insightface_result
+        print(f"✅ Используется InsightFace ({insightface_result}) - лучшее качество распознавания")
+    except ImportError as e:
+        print(f"⚠️ Ошибка импорта insightface модуля: {e}")
+        USE_FACE_RECOGNITION = True
+
+if USE_FACE_RECOGNITION and test_method("face_recognition"):
+    try:
+        from cluster_face_recognition import build_plan_face_recognition as build_plan_advanced, distribute_to_folders, process_group_folder, IMG_EXTS
+        print("✅ Используется Face Recognition (улучшенные настройки) - запасной вариант")
+    except ImportError as e:
+        print(f"⚠️ Ошибка импорта face_recognition модуля: {e}")
+        USE_FACE_RECOGNITION = False
+
+if not (insightface_result or test_method("face_recognition")):
+    print("❌ Критическая ошибка: не найден ни один рабочий метод распознавания")
+    print("🔧 Установите зависимости:")
+    print("   pip install insightface onnxruntime  # рекомендуемый")
+    print("   или")
+    print("   pip install face-recognition  # запасной вариант")
+    exit(1)
 
 # Включаем продвинутую кластеризацию
 USE_ADVANCED_CLUSTERING = True
@@ -313,22 +365,35 @@ async def process_folder_task(task_id: str, folder_path: str, include_excluded: 
                 print(f"🚀 [TASK] Запускаю ADVANCED кластеризацию для {folder_path}")
                 # Используем продвинутую кластеризацию
                 try:
-                    # Используем functools.partial для передачи параметров
-                    clustering_func = functools.partial(
-                        build_plan_advanced,
-                        input_dir=path,
-                        min_face_confidence=0.9,
-                        apply_tta=True,
-                        use_gpu=False,
-                        progress_callback=progress_callback,
-                        include_excluded=include_excluded
-                    )
+                    if USE_FACE_RECOGNITION:
+                        # Параметры для face_recognition
+                        clustering_func = functools.partial(
+                            build_plan_advanced,
+                            input_dir=path,
+                            progress_callback=progress_callback,
+                            sim_threshold=0.6,
+                            min_cluster_size=2,
+                            model="hog"  # "hog" для скорости, "cnn" для точности
+                        )
+                    else:
+                        # Параметры для insightface
+                        clustering_func = functools.partial(
+                            build_plan_advanced,
+                            input_dir=path,
+                            progress_callback=progress_callback,
+                            sim_threshold=0.6,
+                            min_cluster_size=2,
+                            ctx_id=0,
+                            det_size=(640, 640),
+                            model_name=INSIGHTFACE_MODEL or "buffalo_l"
+                        )
                     plan = await loop.run_in_executor(executor, clustering_func)
                 except Exception as e:
                     print(f"⚠️ Ошибка ADVANCED кластеризации, fallback на стандартную: {e}")
                     plan = await loop.run_in_executor(
                         executor,
-                        functools.partial(build_plan_advanced, path, progress_callback, include_excluded)
+                        functools.partial(build_plan_advanced, input_dir=path, progress_callback=progress_callback,
+                                        model_name=INSIGHTFACE_MODEL or "buffalo_l")
                     )
             else:
                 print(f"🚀 [TASK] Запускаю стандартную кластеризацию для {folder_path}")
@@ -336,7 +401,8 @@ async def process_folder_task(task_id: str, folder_path: str, include_excluded: 
                 try:
                     plan = await loop.run_in_executor(
                         executor,
-                        functools.partial(build_plan_advanced, path, progress_callback, include_excluded)
+                        functools.partial(build_plan_advanced, input_dir=path, progress_callback=progress_callback,
+                                        model_name=INSIGHTFACE_MODEL or "buffalo_l")
                     )
                 except Exception as e:
                     app_state["current_tasks"][task_id]["status"] = "error"
@@ -802,14 +868,26 @@ async def process_common_photos(request: ProcessCommonPhotosRequest):
                 print(f"📸 [API] Найдено изображений: {len(image_files)}")
                 
                 # Кластеризуем общую папку
-                plan = build_plan_advanced(
-                    input_dir=folder_path,
-                    progress_callback=None,
-                    sim_threshold=0.60,
-                    min_cluster_size=2,
-                    ctx_id=0,
-                    det_size=(640, 640)
-                )
+                if USE_FACE_RECOGNITION:
+                    # Параметры для face_recognition
+                    plan = build_plan_advanced(
+                        input_dir=folder_path,
+                        progress_callback=None,
+                        sim_threshold=0.60,
+                        min_cluster_size=2,
+                        model="hog"
+                    )
+                else:
+                    # Параметры для insightface
+                    plan = build_plan_advanced(
+                        input_dir=folder_path,
+                        progress_callback=None,
+                        sim_threshold=0.60,
+                        min_cluster_size=2,
+                        ctx_id=0,
+                        det_size=(640, 640),
+                        model_name=INSIGHTFACE_MODEL or "buffalo_l"
+                    )
                 
                 print(f"📊 [API] Результат кластеризации: {type(plan)}")
                 if isinstance(plan, dict):
@@ -836,23 +914,35 @@ async def process_common_photos(request: ProcessCommonPhotosRequest):
                 traceback.print_exc()
                 continue
         
-        # Создаем пустые папки для каждого уникального человека
+        # Создаем папки для каждого кластера из общих фото + 2 дополнительные пустые
         root_dir = Path(root_path)
         created_folders = []
-        
-        for i, cluster_id in enumerate(sorted(all_unique_clusters), 1):
-            folder_name = str(i)
+
+        # Создаем папки для всех найденных кластеров (используем реальные номера кластеров)
+        for cluster_id in sorted(all_unique_clusters):
+            folder_name = str(cluster_id)
             folder_path = root_dir / folder_name
             folder_path.mkdir(parents=True, exist_ok=True)
             created_folders.append(folder_name)
-            print(f"📁 [API] Создана папка: {folder_path}")
-        
+            print(f"📁 [API] Создана папка для кластера {cluster_id}: {folder_path}")
+
+        # Добавляем 2 дополнительные пустые папки
+        max_cluster_id = max(all_unique_clusters) if all_unique_clusters else 0
+        for i in range(1, 3):  # Создаем 2 дополнительные папки
+            extra_cluster_id = max_cluster_id + i
+            folder_name = str(extra_cluster_id)
+            folder_path = root_dir / folder_name
+            folder_path.mkdir(parents=True, exist_ok=True)
+            created_folders.append(folder_name)
+            print(f"📁 [API] Создана дополнительная пустая папка {extra_cluster_id}: {folder_path}")
+
         result = {
             "success": True,
             "processed_folders": processed_folders,
             "unique_people": len(all_unique_clusters),
+            "total_folders_created": len(created_folders),
             "created_folders": created_folders,
-            "message": f"Обработано {processed_folders} общих папок, создано {len(all_unique_clusters)} папок для уникальных людей"
+            "message": f"Обработано {processed_folders} общих папок, создано {len(created_folders)} папок (из них {len(all_unique_clusters)} для найденных кластеров + 2 дополнительные)"
         }
         
         print(f"✅ [API] Обработка завершена: {result}")

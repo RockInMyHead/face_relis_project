@@ -22,8 +22,3 @@ pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 httpx==0.25.0
 
-# Опционально: улучшенное распознавание лиц
-# retinaface  # Более точная детекция лиц
-# facenet-pytorch  # Альтернативные эмбеддинги
-# torch>=1.7.0  # Для FaceNet-PyTorch
-

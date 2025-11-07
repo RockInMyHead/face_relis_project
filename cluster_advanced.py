@@ -36,14 +36,9 @@ except ImportError:
 
 # Альтернативы
 try:
-    import torch
-    from PIL import Image as PILImage
     from facenet_pytorch import MTCNN, InceptionResnetV1
     FACENET_AVAILABLE = True
-    print("✅ FaceNet-PyTorch загружен")
 except ImportError:
-    torch = None
-    PILImage = None
     FACENET_AVAILABLE = False
     print("⚠️ FaceNet-PyTorch не установлен")
 
@@ -89,14 +84,9 @@ def calculate_blur_score(image: np.ndarray) -> float:
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     else:
         gray = image
-
+    
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    # Преобразуем NumPy типы в Python float
-    try:
-        return float(laplacian_var)
-    except (TypeError, ValueError):
-        print(f"⚠️ Не удалось преобразовать laplacian_var: {type(laplacian_var)}, {laplacian_var}")
-        return 250.0  # значение по умолчанию
+    return laplacian_var
 
 def calculate_face_quality(face_img: np.ndarray, bbox: tuple = None) -> float:
     """
@@ -117,12 +107,6 @@ def calculate_face_quality(face_img: np.ndarray, bbox: tuple = None) -> float:
     
     # 2. Оценка резкости через Variance of Laplacian
     blur_score = calculate_blur_score(face_img)
-    # Преобразуем NumPy типы в Python float
-    try:
-        blur_score = float(blur_score)
-    except (TypeError, ValueError):
-        print(f"⚠️ Не удалось преобразовать blur_score: {type(blur_score)}, {blur_score}")
-        blur_score = 250.0  # значение по умолчанию
     # Нормализуем: blur < 100 = плохо, > 500 = отлично
     normalized_blur = min(max(blur_score, 100), 500) / 500
     scores.append(normalized_blur * 0.5)  # 50% веса
@@ -180,11 +164,7 @@ class AdvancedFaceRecognition:
     
     def __init__(self, use_gpu=False, min_face_size=20, confidence_threshold=0.9):
         self.min_face_size = min_face_size
-        # Убеждаемся, что confidence_threshold является float
-        try:
-            self.confidence_threshold = float(confidence_threshold)
-        except (TypeError, ValueError):
-            self.confidence_threshold = 0.9
+        self.confidence_threshold = confidence_threshold
         self.use_gpu = use_gpu
         
         # Инициализация детектора
@@ -228,16 +208,8 @@ class AdvancedFaceRecognition:
         
         for face in faces:
             # Фильтрация по confidence
-            if hasattr(face, 'det_score'):
-                det_score = face.det_score
-                # Преобразуем NumPy типы в Python float
-                try:
-                    det_score = float(det_score)
-                except (TypeError, ValueError):
-                    print(f"⚠️ Не удалось преобразовать det_score: {type(det_score)}, {det_score}")
-                    det_score = 0.95  # значение по умолчанию
-                if det_score < self.confidence_threshold:
-                    continue
+            if hasattr(face, 'det_score') and face.det_score < self.confidence_threshold:
+                continue
             
             bbox = face.bbox.astype(int)
             x1, y1, x2, y2 = bbox
@@ -296,20 +268,12 @@ class AdvancedFaceRecognition:
                         embedding = (embedding + flipped_embedding) / 2.0
                         embedding = embedding / np.linalg.norm(embedding)
             
-            # Убеждаемся, что confidence является числом
-            confidence = 1.0
-            if hasattr(face, 'det_score'):
-                try:
-                    confidence = float(face.det_score)
-                except (TypeError, ValueError):
-                    confidence = 1.0
-            
             results.append({
                 'bbox': bbox,
                 'landmarks': face.kps if hasattr(face, 'kps') else None,
                 'embedding': embedding,
                 'quality': quality,
-                'confidence': confidence
+                'confidence': face.det_score if hasattr(face, 'det_score') else 1.0
             })
         
         return results
@@ -658,16 +622,6 @@ def build_plan_advanced(
     """
     print(f"🚀 [ADVANCED] Запуск продвинутой кластеризации: {input_dir}")
     
-    # Убеждаемся, что все численные параметры имеют правильный тип
-    try:
-        min_face_confidence = float(min_face_confidence)
-    except (TypeError, ValueError):
-        min_face_confidence = 0.9
-    try:
-        min_blur_threshold = float(min_blur_threshold)
-    except (TypeError, ValueError):
-        min_blur_threshold = 100.0
-    
     input_dir = Path(input_dir)
     start_time = time.time()
     
@@ -687,19 +641,15 @@ def build_plan_advanced(
     if progress_callback:
         progress_callback(f"📂 Найдено {len(all_images)} изображений", 5)
     
-    # Инициализация системы распознавания
-    recognizer = None
-
-    # Пытаемся инициализировать AdvancedFaceRecognition
+    # Инициализация системы распознавания (fallback на InsightFace)
     try:
         recognizer = AdvancedFaceRecognition(
             use_gpu=use_gpu,
             confidence_threshold=min_face_confidence
         )
-        print("✅ AdvancedFaceRecognition инициализирован")
     except Exception as e:
         print(f"⚠️ Ошибка инициализации AdvancedFaceRecognition: {e}")
-        print("🔄 Используем альтернативные методы детекции...")
+        print("🔄 Используем fallback на InsightFace...")
         recognizer = None
     
     if progress_callback:
@@ -730,84 +680,21 @@ def build_plan_advanced(
         try:
             if recognizer is not None:
                 faces = recognizer.detect_and_extract(img, apply_tta=apply_tta)
-                print(f"📸 {img_path.name}: найдено {len(faces)} лиц")
             else:
-                # Попытка использовать RetinaFace + FaceNet если доступны
-                if RETINAFACE_AVAILABLE:
-                    try:
-                        from retinaface import RetinaFace
-                        faces_retina = RetinaFace.detect_faces(img)
-                        faces = []
-
-                        # Если есть FaceNet, используем для эмбеддингов
-                        facenet_available = False
-                        if FACENET_AVAILABLE:
-                            try:
-                                from facenet_pytorch import MTCNN, InceptionResnetV1
-                                mtcnn = MTCNN(image_size=160, margin=0, min_face_size=20,
-                                            thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True)
-                                resnet = InceptionResnetV1(pretrained='vggface2').eval()
-                                facenet_available = True
-                            except Exception as e:
-                                print(f"⚠️ FaceNet инициализация ошибка: {e}")
-                                facenet_available = False
-
-                        for key, face_data in faces_retina.items():
-                            if 'facial_area' in face_data:
-                                x1, y1, x2, y2 = face_data['facial_area']
-                                face_img = img[y1:y2, x1:x2]
-                                if face_img.size > 0:
-                                    embedding = []
-                                    if facenet_available:
-                                        try:
-                                            # Преобразуем изображение для FaceNet
-                                            face_tensor = mtcnn(face_img)
-                                            if face_tensor is not None:
-                                                embedding = resnet(face_tensor.unsqueeze(0)).detach().numpy().flatten()
-                                                embedding = embedding / np.linalg.norm(embedding)  # Нормализация
-                                        except Exception as e:
-                                            print(f"⚠️ FaceNet эмбеддинг ошибка: {e}")
-
-                                    # Создаем структуру аналогичную InsightFace
-                                    face_dict = {
-                                        'bbox': [x1, y1, x2, y2],
-                                        'embedding': embedding.tolist() if len(embedding) > 0 else [],
-                                        'quality': 0.8,
-                                        'confidence': face_data.get('score', 0.9)
-                                    }
-                                    faces.append(face_dict)
-
-                        print(f"🎯 RetinaFace: {img_path.name} - найдено {len(faces)} лиц")
-                        if facenet_available:
-                            valid_embeddings = sum(1 for f in faces if len(f['embedding']) > 0)
-                            print(f"🧠 FaceNet эмбеддинги: {valid_embeddings}/{len(faces)}")
-
-                    except Exception as e:
-                        print(f"⚠️ RetinaFace ошибка: {e}")
-                        faces = []
-                else:
-                    # Fallback на простую детекцию
-                    faces = []
-                    print(f"⚠️ Fallback режим для {img_path.name} (нет моделей распознавания)")
-
+                # Fallback на простую детекцию
+                faces = []
+                print(f"⚠️ Fallback режим для {img_path.name}")
+            
             if not faces:
-                print(f"❌ {img_path.name}: лица не найдены")
                 no_faces.append(img_path)
                 continue
             
             # Фильтрация по качеству
             valid_faces = []
             for face in faces:
-                # Получаем quality и преобразуем в float
-                quality = face.get('quality', 0.5)
-                try:
-                    quality = float(quality)
-                except (TypeError, ValueError):
-                    quality = 0.5  # значение по умолчанию
-
                 # Проверка резкости
-                if quality < 0.3:  # Низкое качество
-                    print(f"  ⚠️ Низкое качество лица в {img_path.name}: {quality:.3f}")
+                if face['quality'] < 0.3:  # Низкое качество
+                    print(f"  ⚠️ Низкое качество лица в {img_path.name}: {face['quality']:.3f}")
                     continue
                 
                 valid_faces.append(face)
@@ -821,13 +708,7 @@ def build_plan_advanced(
             
             for face in valid_faces:
                 all_embeddings.append(face['embedding'])
-                # Получаем quality и преобразуем в float
-                face_quality = face.get('quality', 0.5)
-                try:
-                    face_quality = float(face_quality)
-                except (TypeError, ValueError):
-                    face_quality = 0.5
-                all_qualities.append(face_quality)
+                all_qualities.append(face['quality'])
                 owners.append(img_path)
                 
         except Exception as e:
@@ -855,37 +736,14 @@ def build_plan_advanced(
     if all_qualities:
         X = X * np.array(all_qualities)[:, np.newaxis]
         X = normalize(X, norm='l2')
-
-    # Используем AgglomerativeClustering с косинусной метрикой
-    try:
-        from sklearn.cluster import AgglomerativeClustering
-        # Проверяем версию sklearn для правильного API
-        import sklearn
-        from packaging import version
-
-        # В sklearn 1.4+ параметр affinity заменен на metric
-        if version.parse(sklearn.__version__) >= version.parse("1.4.0"):
-            clustering = AgglomerativeClustering(
-                n_clusters=n_clusters or 3,
-                metric='cosine',
-                linkage='average'
-            )
-            labels = clustering.fit_predict(X)
-        else:
-            # Расстояния косинусные для старых версий
-            dist_matrix = pairwise_distances(X, metric='cosine')
-            clustering = AgglomerativeClustering(
-                n_clusters=n_clusters or 3,
-                affinity='precomputed',
-                linkage='average'
-            )
-            labels = clustering.fit_predict(dist_matrix)
-
-        print(f"✅ AgglomerativeClustering завершено: {len(set(labels))} кластеров")
-    except Exception as e:
-        print(f"⚠️ AgglomerativeClustering не удался: {e}")
-        # Fallback на простую кластеризацию
-        labels = np.zeros(len(X), dtype=int)
+    # Расстояния косинусные
+    dist_matrix = pairwise_distances(X, metric='cosine')
+    clustering = AgglomerativeClustering(
+        n_clusters=n_clusters or 3,
+        affinity='precomputed',
+        linkage='average'
+    )
+    labels = clustering.fit_predict(dist_matrix)
     
     print(f"✅ Кластеризация завершена: {len(set(labels))} кластеров")
     

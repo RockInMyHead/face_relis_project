@@ -72,10 +72,10 @@ class ArcFaceConfig:
 
 
 class ArcFaceEmbedder:
-    def __init__(self, config: ArcFaceConfig = ArcFaceConfig()):
+    def __init__(self, config: ArcFaceConfig = ArcFaceConfig(), model_name: str = "buffalo_l"):
         if FaceAnalysis is None:
             raise ImportError("insightface не установлен. Установите пакет insightface.")
-        self.app = FaceAnalysis(name="buffalo_l")
+        self.app = FaceAnalysis(name=model_name)
         # ctx_id=-1 → CPU, иначе GPU. det_size влияет на recall/скорость детектора
         self.app.prepare(ctx_id=config.ctx_id, det_size=config.det_size)
         self.allowed_blur = config.allowed_blur
@@ -215,6 +215,7 @@ def build_plan_pro(
     min_cluster_size: int = 2,
     ctx_id: int = 0,
     det_size: Tuple[int, int] = (640, 640),
+    model_name: str = "buffalo_l",
 ) -> Dict:
     """Production-кластеризация лиц с ArcFace + Faiss.
 
@@ -232,7 +233,19 @@ def build_plan_pro(
         progress_callback(f"🚀 Кластеризация: {input_dir}", 2)
 
     # Инициализация эмбеддера
-    emb = ArcFaceEmbedder(ArcFaceConfig(det_size=det_size, ctx_id=ctx_id))
+    # Для buffalo_l используем меньший det_size если память ограничена
+    if model_name == "buffalo_l":
+        # Пробуем оптимизировать для buffalo_l
+        try:
+            emb = ArcFaceEmbedder(ArcFaceConfig(det_size=det_size, ctx_id=ctx_id), model_name=model_name)
+        except Exception as e:
+            print(f"Warning: buffalo_l failed with det_size {det_size}, trying smaller...")
+            # Если не получается, пробуем с меньшим размером
+            smaller_det_size = (max(320, det_size[0] // 2), max(320, det_size[1] // 2))
+            emb = ArcFaceEmbedder(ArcFaceConfig(det_size=smaller_det_size, ctx_id=ctx_id), model_name=model_name)
+            print(f"Using buffalo_l with reduced det_size: {smaller_det_size}")
+    else:
+        emb = ArcFaceEmbedder(ArcFaceConfig(det_size=det_size, ctx_id=ctx_id), model_name=model_name)
 
     # Сбор изображений
     all_images = [p for p in input_dir.rglob("*") if p.is_file() and is_image(p)]
@@ -342,11 +355,15 @@ def distribute_to_folders(plan: dict, base_dir: Path, cluster_start: int = 1, pr
             is_common_photo = any(excluded_name in str(src.parent).lower() for excluded_name in EXCLUDED_COMMON_NAMES)
             if is_common_photo:
                 common_photo_clusters.update(item["cluster"])
-        
+
         # Объединяем с used_clusters только кластеры с общих фото
         used_clusters = sorted(set(used_clusters) | common_photo_clusters)
-    
-    cluster_id_map = {old: cluster_start + idx for idx, old in enumerate(used_clusters)}
+
+    # В режиме common_mode сохраняем реальные номера кластеров, иначе перенумеровываем
+    if common_mode:
+        cluster_id_map = {old: old for old in used_clusters}  # Сохраняем реальные номера
+    else:
+        cluster_id_map = {old: cluster_start + idx for idx, old in enumerate(used_clusters)}
 
     plan_items = plan.get("plan", [])
     total_items = len(plan_items)
@@ -457,20 +474,20 @@ def distribute_to_folders(plan: dict, base_dir: Path, cluster_start: int = 1, pr
         # Создаем папки в родительской папке (не в папке "общие")
         parent_dir = base_dir.parent
         print(f"📁 Создаем папки в родительской директории: {parent_dir}")
-        
-        # Создаем папки для всех найденных кластеров с использованием перенумерации
-        for old_cid in used_clusters:
-            new_cid = cluster_id_map[old_cid]
-            empty_folder = parent_dir / str(new_cid)
+
+        # Создаем папки для всех найденных кластеров (теперь с реальными номерами)
+        for cluster_id in used_clusters:
+            empty_folder = parent_dir / str(cluster_id)
             empty_folder.mkdir(parents=True, exist_ok=True)
-            print(f"📁 Создана пустая папка для кластера: {new_cid} в {parent_dir}")
-        
+            print(f"📁 Создана пустая папка для кластера: {cluster_id} в {parent_dir}")
+
         # Создаем 2 дополнительные пустые папки
-        max_mapped_cluster_id = max(cluster_id_map.values()) if cluster_id_map else cluster_start - 1
+        max_cluster_id = max(used_clusters) if used_clusters else 0
         for i in range(1, 3):  # Создаем 2 дополнительные папки
-            extra_folder = parent_dir / str(max_mapped_cluster_id + i)
+            extra_cluster_id = max_cluster_id + i
+            extra_folder = parent_dir / str(extra_cluster_id)
             extra_folder.mkdir(parents=True, exist_ok=True)
-            print(f"📁 Создана дополнительная пустая папка: {max_mapped_cluster_id + i} в {parent_dir}")
+            print(f"📁 Создана дополнительная пустая папка: {extra_cluster_id} в {parent_dir}")
 
     return moved, copied, cluster_start + len(used_clusters)
 
