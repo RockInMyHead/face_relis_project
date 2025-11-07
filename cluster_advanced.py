@@ -790,14 +790,37 @@ def build_plan_advanced(
     if all_qualities:
         X = X * np.array(all_qualities)[:, np.newaxis]
         X = normalize(X, norm='l2')
-    # Расстояния косинусные
-    dist_matrix = pairwise_distances(X, metric='cosine')
-    clustering = AgglomerativeClustering(
-        n_clusters=n_clusters or 3,
-        affinity='precomputed',
-        linkage='average'
-    )
-    labels = clustering.fit_predict(dist_matrix)
+
+    # Используем AgglomerativeClustering с косинусной метрикой
+    try:
+        from sklearn.cluster import AgglomerativeClustering
+        # Проверяем версию sklearn для правильного API
+        import sklearn
+        from packaging import version
+
+        # В sklearn 1.4+ параметр affinity заменен на metric
+        if version.parse(sklearn.__version__) >= version.parse("1.4.0"):
+            clustering = AgglomerativeClustering(
+                n_clusters=n_clusters or 3,
+                metric='cosine',
+                linkage='average'
+            )
+            labels = clustering.fit_predict(X)
+        else:
+            # Расстояния косинусные для старых версий
+            dist_matrix = pairwise_distances(X, metric='cosine')
+            clustering = AgglomerativeClustering(
+                n_clusters=n_clusters or 3,
+                affinity='precomputed',
+                linkage='average'
+            )
+            labels = clustering.fit_predict(dist_matrix)
+
+        print(f"✅ AgglomerativeClustering завершено: {len(set(labels))} кластеров")
+    except Exception as e:
+        print(f"⚠️ AgglomerativeClustering не удался: {e}")
+        # Fallback на простую кластеризацию
+        labels = np.zeros(len(X), dtype=int)
     
     print(f"✅ Кластеризация завершена: {len(set(labels))} кластеров")
     
