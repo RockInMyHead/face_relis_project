@@ -44,16 +44,17 @@ if errorlevel 1 (
 echo ✅ Виртуальное окружение активировано
 
 REM Проверяем, что Python доступен в виртуальном окружении
-python --version
+call python --version
 if errorlevel 1 (
     echo ❌ Python недоступен в виртуальном окружении
+    echo 📋 Проверьте, что виртуальное окружение создано правильно
     pause
     exit /b 1
 )
 echo.
 
 echo 📦 Проверяем зависимости...
-python -c "import fastapi, uvicorn, PIL, cv2, numpy, sklearn, packaging" 2>nul
+call python -c "import fastapi, uvicorn, PIL, cv2, numpy, sklearn, packaging" 2>nul
 if errorlevel 1 (
     echo ❌ Некоторые базовые зависимости не установлены.
     echo 🔧 Начинаем установку зависимостей...
@@ -61,32 +62,32 @@ if errorlevel 1 (
     timeout /t 3 >nul
 
     echo 📥 Шаг 1: Обновляем pip...
-    python -m pip install --upgrade pip
+    call python -m pip install --upgrade pip
     if errorlevel 1 (
         echo ⚠️ Не удалось обновить pip системно, пробуем для пользователя...
-        pip install --user --upgrade pip
+        call pip install --user --upgrade pip
     )
 
     echo 📥 Шаг 2: Устанавливаем основные пакеты...
-    pip install fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 pydantic==2.5.0 pillow==10.1.0 psutil==5.9.6 numpy==1.24.3 opencv-python==4.8.1.78 scikit-learn==1.3.2 hdbscan==0.8.33 httpx==0.25.0 packaging>=21.0
+    call pip install fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 pydantic==2.5.0 pillow==10.1.0 psutil==5.9.6 numpy==1.24.3 opencv-python==4.8.1.78 scikit-learn==1.3.2 hdbscan==0.8.33 httpx==0.25.0 packaging>=21.0
     if errorlevel 1 (
         echo ⚠️ Ошибка установки основных пакетов, пробуем по одному...
         echo 📦 Устанавливаем FastAPI и веб-фреймворки...
-        pip install --user fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 pydantic==2.5.0
+        call pip install --user fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 pydantic==2.5.0
         if errorlevel 1 (
             echo ❌ Не удалось установить веб-фреймворки
             pause
             exit /b 1
         )
         echo 📦 Устанавливаем библиотеки изображений...
-        pip install --user pillow==10.1.0 psutil==5.9.6 opencv-python==4.8.1.78
+        call pip install --user pillow==10.1.0 psutil==5.9.6 opencv-python==4.8.1.78
         if errorlevel 1 (
             echo ❌ Не удалось установить библиотеки изображений
             pause
             exit /b 1
         )
         echo 📦 Устанавливаем ML библиотеки...
-        pip install --user numpy==1.24.3 scikit-learn==1.3.2 hdbscan==0.8.33 httpx==0.25.0 packaging>=21.0
+        call pip install --user numpy==1.24.3 scikit-learn==1.3.2 hdbscan==0.8.33 httpx==0.25.0 packaging>=21.0
         if errorlevel 1 (
             echo ❌ Не удалось установить ML библиотеки
             pause
@@ -115,21 +116,21 @@ if errorlevel 1 (
     echo 📥 Шаг 4: Устанавливаем dlib и face-recognition...
     echo 🔧 dlib может требовать Visual Studio Build Tools...
     echo 📋 Если установка dlib не удастся, установите вручную:
-    echo    pip install dlib==19.24.6
+    echo    call pip install dlib==19.24.6
     echo    или скачайте wheel с https://pypi.org/project/dlib/#files
-    pip install dlib==19.24.6
+    call pip install dlib==19.24.6
     if errorlevel 1 (
         echo ❌ dlib не установился автоматически
         echo 🔧 Попробуйте один из вариантов:
         echo    1. Скачайте wheel файл для вашей версии Python с https://pypi.org/project/dlib/#files
         echo    2. pip install cmake
-        echo       pip install dlib==19.24.6
+        echo       call pip install dlib==19.24.6
         echo    3. conda install -c conda-forge dlib
         echo.
         echo ⏳ Продолжаем без dlib...
     )
 
-    pip install face-recognition==1.3.0 face-recognition-models==0.3.0
+    call pip install face-recognition==1.3.0 face-recognition-models==0.3.0
     if errorlevel 1 (
         echo ⚠️ face-recognition не установился
         echo 🔧 FaceSort будет работать без него
@@ -140,7 +141,7 @@ if errorlevel 1 (
 
     echo 📥 Шаг 5: Устанавливаем опциональные улучшения распознавания...
     echo 🔧 RetinaFace (улучшенная детекция лиц)...
-    pip install retinaface --no-deps
+    call pip install retinaface --no-deps
     if errorlevel 1 (
         echo ⚠️ RetinaFace не установился, продолжаем без него
     ) else (
@@ -148,7 +149,7 @@ if errorlevel 1 (
     )
 
     echo 🔧 FaceNet-PyTorch (улучшенные эмбеддинги)...
-    pip install facenet-pytorch
+    call pip install facenet-pytorch
     if errorlevel 1 (
         echo ⚠️ FaceNet-PyTorch не установился, продолжаем без него
     ) else (
@@ -156,7 +157,7 @@ if errorlevel 1 (
     )
 
     echo 🔧 PyTorch (для FaceNet, если не установлен)...
-    pip install torch>=1.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    call pip install torch>=1.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
     if errorlevel 1 (
         echo ⚠️ PyTorch не установился, FaceNet может работать медленнее
     ) else (
@@ -165,7 +166,7 @@ if errorlevel 1 (
     timeout /t 2 >nul
 
     echo 📥 Шаг 6: Проверяем установку...
-    python -c "import fastapi, uvicorn, PIL, cv2, numpy, sklearn, packaging" 2>nul
+    call python -c "import fastapi, uvicorn, PIL, cv2, numpy, sklearn, packaging" 2>nul
     if errorlevel 1 (
         echo ❌ Основные пакеты не установлены
         echo 🔧 Проверьте логи выше и установите пакеты вручную
@@ -175,7 +176,7 @@ if errorlevel 1 (
         echo ✅ Основные зависимости установлены
     )
 
-    python -c "import insightface; fa = insightface.app.FaceAnalysis(); fa.prepare(ctx_id=-1)" 2>nul
+    call python -c "import insightface; fa = insightface.app.FaceAnalysis(); fa.prepare(ctx_id=-1)" 2>nul
     if errorlevel 1 (
         echo ❌ InsightFace не работает корректно
         echo 🔧 Запустите install_insightface_windows.bat отдельно
@@ -184,14 +185,14 @@ if errorlevel 1 (
     )
 
     echo 📋 Проверяем опциональные пакеты...
-    python -c "import retinaface" 2>nul
+    call python -c "import retinaface" 2>nul
     if errorlevel 1 (
         echo ⚠️ RetinaFace не установлен (опционально)
     ) else (
         echo ✅ RetinaFace установлен
     )
 
-    python -c "import facenet_pytorch" 2>nul
+    call python -c "import facenet_pytorch" 2>nul
     if errorlevel 1 (
         echo ⚠️ FaceNet-PyTorch не установлен (опционально)
     ) else (
@@ -210,7 +211,7 @@ timeout /t 2 >nul
 
 echo 🚀 Запускаем сервер FaceSort...
 echo 📋 Если сервер не запустится, проверьте логи выше на ошибки
-start "FaceSort Server" python main.py
+start "FaceSort Server" call python main.py
 
 echo ✅ Сервер запущен!
 echo 🌐 URL: http://localhost:8000
