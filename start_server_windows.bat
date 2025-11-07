@@ -3,6 +3,11 @@ echo 🚀 Запуск проекта FaceSort на Windows...
 echo 📁 Рабочая директория: %cd%
 python --version
 echo.
+echo 📋 FaceSort установит следующие зависимости:
+echo    ✅ FastAPI, Uvicorn, Pillow, OpenCV, NumPy, Scikit-learn
+echo    ✅ InsightFace (обязательно), dlib, face-recognition
+echo    🔄 RetinaFace, FaceNet-PyTorch (опционально, улучшают распознавание)
+echo.
 
 echo 📦 Проверяем виртуальное окружение...
 if not exist venv (
@@ -42,12 +47,12 @@ if errorlevel 1 (
     )
 
     echo 📥 Шаг 2: Устанавливаем основные пакеты...
-    pip install fastapi uvicorn python-multipart jinja2 aiofiles pillow opencv-python numpy scipy matplotlib seaborn pandas tqdm psutil pyyaml python-dotenv requests httpx scikit-learn faiss-cpu
+    pip install fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 pydantic==2.5.0 pillow==10.1.0 psutil==5.9.6 numpy==1.24.3 opencv-python==4.8.1.78 scikit-learn==1.3.2 hdbscan==0.8.33 httpx==0.25.0 packaging>=21.0
     if errorlevel 1 (
         echo ⚠️ Ошибка установки основных пакетов, пробуем по одному...
-        pip install --user fastapi uvicorn pillow opencv-python numpy scipy
-        pip install --user matplotlib seaborn pandas tqdm psutil
-        pip install --user scikit-learn faiss-cpu
+        pip install --user fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 pydantic==2.5.0
+        pip install --user pillow==10.1.0 psutil==5.9.6 numpy==1.24.3 opencv-python==4.8.1.78
+        pip install --user scikit-learn==1.3.2 hdbscan==0.8.33 httpx==0.25.0 packaging>=21.0
     )
 
     echo 📥 Шаг 3: Устанавливаем ML пакеты...
@@ -63,26 +68,46 @@ if errorlevel 1 (
     echo 📥 Шаг 4: Устанавливаем dlib и face-recognition...
     echo 🔧 dlib может требовать Visual Studio Build Tools...
     echo 📋 Если установка dlib не удастся, установите вручную:
-    echo    pip install https://pypi.org/project/dlib/19.24.0/
+    echo    pip install dlib==19.24.6
     echo    или скачайте wheel с https://pypi.org/project/dlib/#files
-    pip install dlib
+    pip install dlib==19.24.6
     if errorlevel 1 (
         echo ❌ dlib не установился автоматически
         echo 🔧 Попробуйте один из вариантов:
-        echo    1. pip install https://files.pythonhosted.org/packages/1a/50/fc9b21e54c2c1b2ac1b9a9a6c1c6b6e5a5d4f4e5d6f7e8f9a0b1c2d3e4f5a6/dlib-19.24.0-cp311-cp311-win_amd64.whl
-        echo    2. conda install -c conda-forge dlib
-        echo    3. Скачайте wheel файл вручную
+        echo    1. Скачайте wheel файл для вашей версии Python с https://pypi.org/project/dlib/#files
+        echo    2. pip install cmake
+        echo       pip install dlib==19.24.6
+        echo    3. conda install -c conda-forge dlib
         echo.
         echo ⏳ Продолжаем без dlib...
     )
 
-    pip install face-recognition face-recognition-models
+    pip install face-recognition==1.3.0 face-recognition-models==0.3.0
     if errorlevel 1 (
         echo ⚠️ face-recognition не установился
     )
 
-    echo 📥 Шаг 5: Проверяем установку...
-    python -c "import fastapi, uvicorn, PIL, cv2" 2>nul
+    echo 📥 Шаг 5: Устанавливаем опциональные улучшения распознавания...
+    echo 🔧 RetinaFace (улучшенная детекция лиц)...
+    pip install retinaface --no-deps
+    if errorlevel 1 (
+        echo ⚠️ RetinaFace не установился, продолжаем без него
+    )
+
+    echo 🔧 FaceNet-PyTorch (улучшенные эмбеддинги)...
+    pip install facenet-pytorch
+    if errorlevel 1 (
+        echo ⚠️ FaceNet-PyTorch не установился, продолжаем без него
+    )
+
+    echo 🔧 PyTorch (для FaceNet, если не установлен)...
+    pip install torch>=1.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    if errorlevel 1 (
+        echo ⚠️ PyTorch не установился, FaceNet может работать медленнее
+    )
+
+    echo 📥 Шаг 6: Проверяем установку...
+    python -c "import fastapi, uvicorn, PIL, cv2, numpy, sklearn, packaging" 2>nul
     if errorlevel 1 (
         echo ❌ Основные пакеты не установлены
         echo 🔧 Проверьте логи выше и установите пакеты вручную
@@ -98,6 +123,21 @@ if errorlevel 1 (
         echo 🔧 Запустите install_insightface_windows.bat отдельно
     ) else (
         echo ✅ InsightFace полностью работает
+    )
+
+    echo 📋 Проверяем опциональные пакеты...
+    python -c "import retinaface" 2>nul
+    if errorlevel 1 (
+        echo ⚠️ RetinaFace не установлен (опционально)
+    ) else (
+        echo ✅ RetinaFace установлен
+    )
+
+    python -c "import facenet_pytorch" 2>nul
+    if errorlevel 1 (
+        echo ⚠️ FaceNet-PyTorch не установлен (опционально)
+    ) else (
+        echo ✅ FaceNet-PyTorch установлен
     )
 
 ) else (
@@ -118,6 +158,14 @@ echo 🌐 URL: http://localhost:8000
 echo 📊 Проверка через 5 секунд...
 timeout /t 5 >nul
 
+echo.
+echo 🎉 Установка завершена! FaceSort готов к работе.
 echo 📋 Для остановки сервера закройте окно командной строки или нажмите Ctrl+C
 echo 🎯 Откройте http://localhost:8000 в браузере
+echo.
+echo 💡 Советы:
+echo    • RetinaFace улучшает детекцию лиц (особенно маленьких)
+echo    • FaceNet-PyTorch дает более точные эмбеддинги
+echo    • Без них FaceSort работает на базе InsightFace
+echo.
 pause
