@@ -36,9 +36,14 @@ except ImportError:
 
 # Альтернативы
 try:
+    import torch
+    from PIL import Image as PILImage
     from facenet_pytorch import MTCNN, InceptionResnetV1
     FACENET_AVAILABLE = True
+    print("✅ FaceNet-PyTorch загружен")
 except ImportError:
+    torch = None
+    PILImage = None
     FACENET_AVAILABLE = False
     print("⚠️ FaceNet-PyTorch не установлен")
 
@@ -682,15 +687,19 @@ def build_plan_advanced(
     if progress_callback:
         progress_callback(f"📂 Найдено {len(all_images)} изображений", 5)
     
-    # Инициализация системы распознавания (fallback на InsightFace)
+    # Инициализация системы распознавания
+    recognizer = None
+
+    # Пытаемся инициализировать AdvancedFaceRecognition
     try:
         recognizer = AdvancedFaceRecognition(
             use_gpu=use_gpu,
             confidence_threshold=min_face_confidence
         )
+        print("✅ AdvancedFaceRecognition инициализирован")
     except Exception as e:
         print(f"⚠️ Ошибка инициализации AdvancedFaceRecognition: {e}")
-        print("🔄 Используем fallback на InsightFace...")
+        print("🔄 Используем альтернативные методы детекции...")
         recognizer = None
     
     if progress_callback:
@@ -721,12 +730,68 @@ def build_plan_advanced(
         try:
             if recognizer is not None:
                 faces = recognizer.detect_and_extract(img, apply_tta=apply_tta)
+                print(f"📸 {img_path.name}: найдено {len(faces)} лиц")
             else:
-                # Fallback на простую детекцию
-                faces = []
-                print(f"⚠️ Fallback режим для {img_path.name}")
-            
+                # Попытка использовать RetinaFace + FaceNet если доступны
+                if RETINAFACE_AVAILABLE:
+                    try:
+                        from retinaface import RetinaFace
+                        faces_retina = RetinaFace.detect_faces(img)
+                        faces = []
+
+                        # Если есть FaceNet, используем для эмбеддингов
+                        facenet_available = False
+                        if FACENET_AVAILABLE:
+                            try:
+                                from facenet_pytorch import MTCNN, InceptionResnetV1
+                                mtcnn = MTCNN(image_size=160, margin=0, min_face_size=20,
+                                            thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True)
+                                resnet = InceptionResnetV1(pretrained='vggface2').eval()
+                                facenet_available = True
+                            except Exception as e:
+                                print(f"⚠️ FaceNet инициализация ошибка: {e}")
+                                facenet_available = False
+
+                        for key, face_data in faces_retina.items():
+                            if 'facial_area' in face_data:
+                                x1, y1, x2, y2 = face_data['facial_area']
+                                face_img = img[y1:y2, x1:x2]
+                                if face_img.size > 0:
+                                    embedding = []
+                                    if facenet_available:
+                                        try:
+                                            # Преобразуем изображение для FaceNet
+                                            face_tensor = mtcnn(face_img)
+                                            if face_tensor is not None:
+                                                embedding = resnet(face_tensor.unsqueeze(0)).detach().numpy().flatten()
+                                                embedding = embedding / np.linalg.norm(embedding)  # Нормализация
+                                        except Exception as e:
+                                            print(f"⚠️ FaceNet эмбеддинг ошибка: {e}")
+
+                                    # Создаем структуру аналогичную InsightFace
+                                    face_dict = {
+                                        'bbox': [x1, y1, x2, y2],
+                                        'embedding': embedding.tolist() if len(embedding) > 0 else [],
+                                        'quality': 0.8,
+                                        'confidence': face_data.get('score', 0.9)
+                                    }
+                                    faces.append(face_dict)
+
+                        print(f"🎯 RetinaFace: {img_path.name} - найдено {len(faces)} лиц")
+                        if facenet_available:
+                            valid_embeddings = sum(1 for f in faces if len(f['embedding']) > 0)
+                            print(f"🧠 FaceNet эмбеддинги: {valid_embeddings}/{len(faces)}")
+
+                    except Exception as e:
+                        print(f"⚠️ RetinaFace ошибка: {e}")
+                        faces = []
+                else:
+                    # Fallback на простую детекцию
+                    faces = []
+                    print(f"⚠️ Fallback режим для {img_path.name} (нет моделей распознавания)")
+
             if not faces:
+                print(f"❌ {img_path.name}: лица не найдены")
                 no_faces.append(img_path)
                 continue
             
